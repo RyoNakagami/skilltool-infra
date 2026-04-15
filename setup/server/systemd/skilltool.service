@@ -1,0 +1,43 @@
+# skilltool registry — systemd unit
+#
+# Install on Server A as root:
+#   sudo install -m 0644 setup/server/systemd/skilltool.service \
+#        /etc/systemd/system/skilltool.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now skilltool.service
+#
+# The unit assumes:
+#   * a system user `skilltool` with home /srv/skilltool
+#   * the repo checked out at /srv/skilltool/skilltool-infra
+#   * `skilltool` user is a member of the `docker` group
+#   * registry/.env contains PUID / PGID of the skilltool user
+#
+# It wraps `docker compose` lifecycle. Docker itself (dockerd) is a
+# separate service that this unit only depends on.
+
+[Unit]
+Description=skilltool registry (docker compose)
+Documentation=https://github.com/RyoNakagami/skilltool-infra
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=skilltool
+Group=skilltool
+WorkingDirectory=/srv/skilltool/skilltool-infra/registry
+
+# --build ensures the Dockerfile changes land on each `systemctl start`
+# (idempotent; no-op if nothing changed).
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose up -d --build
+
+TimeoutStartSec=300
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
