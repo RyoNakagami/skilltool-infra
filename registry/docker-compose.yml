@@ -4,10 +4,6 @@ services:
     image: skilltool-registry:latest
     container_name: skilltool-registry
     restart: unless-stopped
-    # Run the container under the host's `skilltool` service user so
-    # bind-mounted files (packages, users.toml, publish.log) are owned
-    # by that user. Defaults to root so single-user dev setups still
-    # work without setting PUID/PGID.
     user: "${PUID:-0}:${PGID:-0}"
     ports:
       # Bind to Tailscale interface only when SKILLTOOL_BIND is set
