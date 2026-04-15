@@ -1,0 +1,26 @@
+services:
+  registry:
+    build: .
+    image: skilltool-registry:latest
+    container_name: skilltool-registry
+    restart: unless-stopped
+    ports:
+      # Bind to Tailscale interface only when SKILLTOOL_BIND is set
+      # (e.g. SKILLTOOL_BIND=100.x.x.x). Defaults to all interfaces.
+      - "${SKILLTOOL_BIND:-0.0.0.0}:8765:8765"
+    env_file:
+      - .env
+    environment:
+      # users.toml and publish.log default to the data volume so the
+      # existing bind mount persists them. Override via .env if you
+      # want to split them onto a separate mount.
+      SKILLTOOL_USERS_FILE: ${SKILLTOOL_USERS_FILE:-/data/users.toml}
+      SKILLTOOL_AUDIT_LOG: ${SKILLTOOL_AUDIT_LOG:-/data/publish.log}
+    volumes:
+      # Package storage + users.toml + publish.log (unless overridden).
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

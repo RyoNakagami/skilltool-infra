@@ -1,0 +1,15 @@
+# Top-level pyproject kept lean: only pytest configuration for the
+# ``tests/`` tree. The shippable package lives under ``client/`` and has
+# its own pyproject.
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: tests that shell out to subprocesses (still fast, just slower than unit)",
+]

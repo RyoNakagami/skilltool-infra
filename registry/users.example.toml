@@ -1,0 +1,20 @@
+# skilltool registry — per-user publish tokens (schema example).
+#
+# The live copy lives on Server A at the path pointed to by
+# SKILLTOOL_USERS_FILE (default: /data/users.toml, i.e.
+# ./registry/data/users.toml on the host). It is never committed to
+# Git — see .gitignore.
+#
+# Fields:
+#   token     string   — per-user bearer token. Generate with:
+#                         openssl rand -hex 32
+#                        The recommended format is "tok_<name>_<hex>".
+#   teams     string[] — team memberships. Reserved for future
+#                        skill-level access control.
+#   disabled  bool     — set true to revoke; the server refuses the
+#                        token on its next request without a restart.
+
+[users.YOURNAME]
+token = "tok_YOURNAME_REPLACE_WITH_openssl_rand_hex_32"
+teams = ["your-team"]
+# disabled = true   # uncomment to revoke
