@@ -335,9 +335,22 @@ team ACL などの拡張方針は
 
 registry は PyPI-like な HTML index をサーブします。
 
-- `http://100.x.x.x:8765/` — パッケージ一覧
-- `http://100.x.x.x:8765/packages/<name>` — バージョン一覧 + 直リンク
+- `http://100.x.x.x:8765/` — パッケージ一覧（**Name / Tag / Description の regex
+  検索フォーム**・Tags 列つき）
+- `http://100.x.x.x:8765/packages/<name>` — バージョン一覧 + **各バージョンの
+  published_at / published_by** + zip 直リンク
 - `http://100.x.x.x:8765/docs` — FastAPI の Swagger UI（API を試打できる）
+
+Tag バッジをクリックすると `/?tag=<tag>` で絞り込まれます。
+同じフィルタを API 経由で使うには:
+
+```bash
+curl "$SKILLTOOL_REGISTRY/api/search?name=^doc&tag=office"
+# → {"results":[{"name":"docx","latest":"1.1.0","tags":["office","word"],...}]}
+```
+
+`q` (legacy: name + description 合体マッチ) / `name` / `tag` / `description` の
+どれか 1 つは指定が必要です。複数指定すると AND で評価されます。
 
 Tailscale に入っていないマシンから見たい場合は SSH port forward が楽:
 

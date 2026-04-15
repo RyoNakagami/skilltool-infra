@@ -44,6 +44,7 @@ class SkillMetadata:
     # their defaults so callers can branch on ``manifest_format``.
     entry: str | None = None
     include: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     manifest_format: str = "skill.md"
 
     # ------------------------------------------------------------------
@@ -94,6 +95,15 @@ class SkillMetadata:
             raise ValueError(
                 f"{source}: skill.include must be a list of strings"
             )
+        tags_raw = skill.get("tags") or []
+        if isinstance(tags_raw, list):
+            tags = [str(t) for t in tags_raw]
+        elif isinstance(tags_raw, str):
+            tags = [tags_raw]
+        else:
+            raise ValueError(
+                f"{source}: skill.tags must be a list of strings"
+            )
         return cls(
             name=str(skill["name"]),
             version=str(skill["version"]),
@@ -101,6 +111,7 @@ class SkillMetadata:
             author=(str(skill["author"]) if "author" in skill else None),
             entry=entry,
             include=include,
+            tags=tags,
             manifest_format="skill.toml",
         )
 

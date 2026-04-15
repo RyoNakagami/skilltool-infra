@@ -31,13 +31,19 @@ def package_table(rows: Iterable[dict[str, Any]], *, title: str | None = None) -
     table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Latest", style="magenta")
     table.add_column("Author")
+    table.add_column("Tags", style="blue")
     table.add_column("Description")
     count = 0
     for row in rows:
+        tags = row.get("tags") or []
+        if isinstance(tags, str):
+            tags = [tags]
+        tag_str = ", ".join(str(t) for t in tags) if tags else ""
         table.add_row(
             str(row.get("name", "")),
             str(row.get("latest", row.get("version", ""))),
             str(row.get("author", "")),
+            tag_str,
             str(row.get("description", "")),
         )
         count += 1

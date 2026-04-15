@@ -33,6 +33,7 @@ import zipfile
 from html import escape
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import quote as urlquote
 
 DEFAULT_ENTRY = "SKILL.md"
 
@@ -199,6 +200,15 @@ def iter_packages() -> Iterable[tuple[str, list[str]]]:
             yield entry.name, versions
 
 
+def _normalize_tags(raw: Any) -> list[str]:
+    """Coerce ``tags`` from the manifest into a clean ``list[str]``."""
+    if isinstance(raw, list):
+        return [str(t) for t in raw if isinstance(t, (str, int, float))]
+    if isinstance(raw, str):
+        return [raw]
+    return []
+
+
 def all_packages() -> list[dict[str, Any]]:
     """Summary record for every package in the registry.
 
@@ -214,9 +224,27 @@ def all_packages() -> list[dict[str, Any]]:
                 "latest": versions[-1],
                 "description": meta.get("description", ""),
                 "author": meta.get("author", ""),
+                "tags": _normalize_tags(meta.get("tags")),
+                "published_at": str(meta.get("published_at", "") or ""),
+                "published_by": str(meta.get("published_by", "") or ""),
             }
         )
     return out
+
+
+def version_entries(name: str) -> list[dict[str, Any]]:
+    """Per-version publish info for a package (newest first)."""
+    entries: list[dict[str, Any]] = []
+    for v in reversed(list_versions(name)):
+        vmeta = load_manifest(name, v)
+        entries.append(
+            {
+                "version": v,
+                "published_at": str(vmeta.get("published_at", "") or ""),
+                "published_by": str(vmeta.get("published_by", "") or ""),
+            }
+        )
+    return entries
 
 
 def _find_manifest(names: list[str], filename: str) -> str | None:
@@ -381,26 +409,71 @@ def download(name: str, version: str | None = None) -> FileResponse:
     )
 
 
-@app.get("/api/search")
-def search(q: str) -> dict[str, Any]:
+def _compile_or_400(pattern: str | None, label: str) -> re.Pattern[str] | None:
+    if pattern is None or pattern == "":
+        return None
     try:
-        pattern = re.compile(q, re.IGNORECASE)
+        return re.compile(pattern, re.IGNORECASE)
     except re.error as exc:
-        raise HTTPException(400, f"invalid regex: {exc}")
+        raise HTTPException(400, f"invalid {label} regex: {exc}")
 
-    results: list[dict[str, Any]] = []
-    for name, versions in iter_packages():
-        meta = load_manifest(name, versions[-1])
-        haystack = f"{name} {meta.get('description', '')}"
-        if pattern.search(haystack):
-            results.append(
-                {
-                    "name": name,
-                    "latest": versions[-1],
-                    "description": meta.get("description", ""),
-                    "author": meta.get("author", ""),
-                }
-            )
+
+def _filter_packages(
+    entries: list[dict[str, Any]],
+    *,
+    q: re.Pattern[str] | None = None,
+    name: re.Pattern[str] | None = None,
+    tag: re.Pattern[str] | None = None,
+    description: re.Pattern[str] | None = None,
+) -> list[dict[str, Any]]:
+    """AND-combined filter: every provided pattern must match."""
+    out: list[dict[str, Any]] = []
+    for entry in entries:
+        if q and not q.search(f"{entry['name']} {entry.get('description', '')}"):
+            continue
+        if name and not name.search(entry["name"]):
+            continue
+        if description and not description.search(
+            entry.get("description", "") or ""
+        ):
+            continue
+        if tag:
+            tags = entry.get("tags", []) or []
+            if not any(tag.search(t) for t in tags):
+                continue
+        out.append(entry)
+    return out
+
+
+@app.get("/api/search")
+def search(
+    q: str | None = Query(
+        default=None,
+        description="Legacy: regex matched against name + description.",
+    ),
+    name: str | None = Query(
+        default=None, description="Regex against package name only."
+    ),
+    tag: str | None = Query(
+        default=None, description="Regex against any one of the package's tags."
+    ),
+    description: str | None = Query(
+        default=None, description="Regex against description only."
+    ),
+) -> dict[str, Any]:
+    patterns = {
+        "q": _compile_or_400(q, "q"),
+        "name": _compile_or_400(name, "name"),
+        "tag": _compile_or_400(tag, "tag"),
+        "description": _compile_or_400(description, "description"),
+    }
+    # No filter at all → keep old 400-on-empty contract for /api/search to
+    # avoid accidentally exfiltrating the whole registry.
+    if not any(patterns.values()):
+        raise HTTPException(
+            400, "at least one of q / name / tag / description is required"
+        )
+    results = _filter_packages(all_packages(), **patterns)
     return {"results": results}
 
 
@@ -509,7 +582,16 @@ th { background: #fafafa; font-weight: 600; }
 a { color: #0366d6; }
 code, pre { background: #f5f5f5; border-radius: 4px; padding: 2px 6px; font-family: ui-monospace, monospace; }
 pre { padding: 12px; overflow-x: auto; }
-.muted { color: #888; }
+.muted { color: #888; font-size: 12px; }
+form.search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 1rem 0 0.5rem; }
+form.search input { padding: 5px 9px; border: 1px solid #ccc; border-radius: 4px; min-width: 180px; font-size: 13px; }
+form.search button { padding: 5px 14px; background: #0366d6; color: #fff; border: 0; border-radius: 4px; cursor: pointer; font-size: 13px; }
+form.search button:hover { background: #0258b6; }
+form.search .clear { font-size: 13px; }
+a.tag { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; background: #e7f3ff; color: #0366d6; border-radius: 10px; font-size: 12px; text-decoration: none; }
+a.tag:hover { background: #cfe5fa; text-decoration: none; }
+.error { color: #a00; background: #fee; padding: 8px 12px; border-radius: 4px; margin: 0.5rem 0; }
+td.ts { font-family: ui-monospace, monospace; font-size: 12px; color: #555; white-space: nowrap; }
 """
 
 
@@ -524,26 +606,96 @@ def _layout(title: str, body: str) -> str:
     )
 
 
+def _tag_badges(tags: list[str]) -> str:
+    if not tags:
+        return '<span class=muted>—</span>'
+    return "".join(
+        f'<a class="tag" href="/?tag={urlquote(t)}">{escape(t)}</a>'
+        for t in tags
+    )
+
+
+def _search_form(name: str, tag: str, description: str) -> str:
+    """Render the top-of-page filter form, preserving current inputs."""
+    return (
+        '<form method="get" class="search">'
+        f'<input type="text" name="name" value="{escape(name)}" placeholder="Name (regex)">'
+        f'<input type="text" name="tag" value="{escape(tag)}" placeholder="Tag (regex)">'
+        f'<input type="text" name="description" value="{escape(description)}" placeholder="Description (regex)">'
+        '<button type="submit">Search</button>'
+        '<a class="clear" href="/">clear</a>'
+        "</form>"
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
-def home() -> HTMLResponse:
+def home(
+    name: str | None = Query(default=None),
+    tag: str | None = Query(default=None),
+    description: str | None = Query(default=None),
+) -> HTMLResponse:
+    # Compile each filter; collect regex errors so the page renders with a
+    # warning instead of a 400 (better UX for browser users).
+    errors: list[str] = []
+
+    def _compile(raw: str | None, label: str) -> re.Pattern[str] | None:
+        if not raw:
+            return None
+        try:
+            return re.compile(raw, re.IGNORECASE)
+        except re.error as exc:
+            errors.append(f"{label}: {exc}")
+            return None
+
+    patterns = {
+        "name": _compile(name, "name"),
+        "tag": _compile(tag, "tag"),
+        "description": _compile(description, "description"),
+    }
+
+    all_pkgs = all_packages()
+    visible = (
+        _filter_packages(all_pkgs, **patterns)
+        if any(patterns.values())
+        else all_pkgs
+    )
+
+    active_filter = any(patterns.values()) or errors
+    status = (
+        f"{len(visible)} of {len(all_pkgs)} package(s)"
+        if active_filter
+        else f"{len(all_pkgs)} package(s)"
+    )
+
     rows: list[str] = []
-    total = 0
-    for name, versions in iter_packages():
-        total += 1
-        meta = load_manifest(name, versions[-1])
+    for entry in visible:
         rows.append(
             "<tr>"
-            f"<td><a href=\"/packages/{escape(name)}\">{escape(name)}</a></td>"
-            f"<td>{escape(versions[-1])}</td>"
-            f"<td>{escape(str(meta.get('description', '')))}</td>"
+            f"<td><a href=\"/packages/{escape(entry['name'])}\">{escape(entry['name'])}</a></td>"
+            f"<td>{escape(entry['latest'])}</td>"
+            f"<td>{_tag_badges(entry.get('tags', []))}</td>"
+            f"<td>{escape(str(entry.get('description', '') or ''))}</td>"
             "</tr>"
         )
+
+    err_html = (
+        f'<p class="error">invalid regex — {escape("; ".join(errors))}</p>'
+        if errors
+        else ""
+    )
+
     body = (
         "<h1><a href=\"/\">skilltool registry</a></h1>"
-        f"<p class=muted>{total} package(s).</p>"
-        "<table><thead><tr><th>Name</th><th>Latest</th><th>Description</th></tr></thead>"
-        "<tbody>"
-        + ("".join(rows) or "<tr><td colspan=3 class=muted>empty</td></tr>")
+        + _search_form(name or "", tag or "", description or "")
+        + err_html
+        + f'<p class="muted">{status}</p>'
+        + "<table><thead><tr>"
+        "<th>Name</th><th>Latest</th><th>Tags</th><th>Description</th>"
+        "</tr></thead><tbody>"
+        + (
+            "".join(rows)
+            or "<tr><td colspan=4 class=muted>no matches</td></tr>"
+        )
         + "</tbody></table>"
     )
     return HTMLResponse(_layout("skilltool registry", body))
@@ -557,15 +709,23 @@ def package_page(name: str) -> HTMLResponse:
     latest = versions[-1]
     meta = load_manifest(name, latest)
 
+    entries = version_entries(name)
     version_rows = "".join(
         "<tr>"
-        f"<td>{escape(v)}</td>"
-        f"<td><a href=\"/api/packages/{escape(name)}/download?version={escape(v)}\">zip</a></td>"
+        f"<td>{escape(ent['version'])}</td>"
+        f"<td class=ts>{escape(ent['published_at'] or '—')}</td>"
+        f"<td class=muted>{escape(ent['published_by'] or '—')}</td>"
+        "<td>"
+        f"<a href=\"/api/packages/{escape(name)}/download?version={urlquote(ent['version'])}\">zip</a>"
+        "</td>"
         "</tr>"
-        for v in reversed(versions)
+        for ent in entries
     )
+
     published_by = str(meta.get("published_by", "") or "—")
     published_at = str(meta.get("published_at", "") or "—")
+    tags = _normalize_tags(meta.get("tags"))
+    tags_html = _tag_badges(tags) if tags else ""
     body = (
         "<p><a href=\"/\">← all packages</a></p>"
         f"<h1>{escape(name)}</h1>"
@@ -573,11 +733,14 @@ def package_page(name: str) -> HTMLResponse:
         f"<p><strong>Author:</strong> {escape(str(meta.get('author', '') or '—'))}</p>"
         f"<p><strong>Published by:</strong> {escape(published_by)} "
         f"<span class=muted>({escape(published_at)})</span></p>"
-        f"<p>{escape(str(meta.get('description', '')))}</p>"
-        "<h2>Install</h2>"
-        f"<pre>skilltool install {escape(name)}</pre>"
-        "<h2>Versions</h2>"
-        "<table><thead><tr><th>Version</th><th>Download</th></tr></thead>"
-        f"<tbody>{version_rows}</tbody></table>"
+        + (f"<p><strong>Tags:</strong> {tags_html}</p>" if tags else "")
+        + f"<p>{escape(str(meta.get('description', '')))}</p>"
+        + "<h2>Install</h2>"
+        + f"<pre>skilltool install {escape(name)}</pre>"
+        + "<h2>Versions</h2>"
+        + "<table><thead><tr>"
+        "<th>Version</th><th>Published at</th><th>By</th><th>Download</th>"
+        "</tr></thead>"
+        + f"<tbody>{version_rows}</tbody></table>"
     )
     return HTMLResponse(_layout(f"{name} — skilltool", body))

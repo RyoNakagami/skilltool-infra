@@ -213,22 +213,31 @@ append-only なので増分バックアップと相性が良い。
 
 ### 5.1 検索は regex のみ
 
-**現状**: `GET /api/search?q=…` は `name` + `description` に対して
-`re.search(pattern, haystack, IGNORECASE)` するだけ。tokenization も
-fuzzy matching も無い。
+**現状**: `GET /api/search` は以下のフィールド別 regex をサポート
+（case-insensitive、複数指定で AND）:
 
-**拡張パス**: `tags` や `entry` もマッチ対象に広げる / inverted index
-化する / FAISS 等で意味検索。
+- `q` — name + description（後方互換）
+- `name`
+- `tag`
+- `description`
+
+tokenization も fuzzy matching も無い。
+
+**拡張パス**: `entry` / `author` もマッチ対象に / inverted index 化 /
+FAISS 等で意味検索。
 
 **実装優先度**: 低
 
-### 5.2 Web UI が read-only で静的
+### 5.2 Web UI が read-only
 
-**現状**: `/` と `/packages/<name>` は静的 HTML。検索フォームも
-フィルタも無い。publish は CLI のみ。
+**現状**: `/` は Name / Tag / Description の検索フォーム付き + Tags
+列 / `/packages/<name>` は version ごとの published_at + Tags 表示、
+まで実装済み。ただし publish は CLI のみ、package 管理操作（yank、
+rename 等）も UI には無い。
 
-**拡張パス**: Jinja2 テンプレ + 検索フォーム。publish の Web 受付は
-セキュリティ上の複雑さが増すので優先度低。
+**拡張パス**: Web publish 受付は CSRF・ファイル検証等で複雑さが増す
+ので優先度は低いまま。検索結果の URL がそのまま共有できるという
+利点は現状でも得られている。
 
 **実装優先度**: 低
 
@@ -358,12 +367,12 @@ trace id は無い。
 ## 10. サマリー
 
 | 分類 | 主な欠落 | 現状の緩和 | 優先度 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 認可 | package ACL, namespace, 読み取り認証 | audit, prefix 運用, Tailscale perimeter | 中 / 低 / 中 |
 | 操作 | delete/yank, rename, deps | 版上げ差し替え, 手動 rm | 中 / 低 / 低 |
 | 整合性 | 署名, tamper 検出 | Tailscale 暗号化 | 低 |
 | 運用 | rotate, quota, hot reload, backup | 手作業, 低 QPS 想定 | 中 / 低 / 低 / 中 |
-| 検索 | regex のみ, 静的 UI | CLI + simple HTML | 低 |
+| 検索 | regex のみ, tokenize 無し | per-field 検索 + Tags 列 + 検索フォーム実装済 | 低 |
 | Transport | argv 上限, manual ProxyJump | stdin stub あり, ssh_config 運用 | 中 / 低 |
 | 並行性 | 非 atomic publish, race | 運用で回避 | 低 |
 | テスト/CI | 実 SSH 非検証, カバレッジ未強制 | mock で代替 | 低 / 中 |

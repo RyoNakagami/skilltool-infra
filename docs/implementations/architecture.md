@@ -103,12 +103,12 @@ CLI は **transport の存在をまったく知らない** 設計にしている
 
   | Method + Path | Auth | 役割 |
   | --- | --- | --- |
-  | `GET  /` | – | PyPI-like HTML index |
-  | `GET  /packages/{name}` | – | HTML package page |
+  | `GET  /` | – | PyPI-like HTML index。Name / Tag / Description の regex 検索フォーム + Tags 列 |
+  | `GET  /packages/{name}` | – | HTML package page。version ごとの published_at / published_by + Tags 表示 |
   | `GET  /api/health` | – | liveness |
   | `GET  /api/packages/{name}` | – | JSON metadata + version 一覧 |
   | `GET  /api/packages/{name}/download` | – | zip ダウンロード |
-  | `GET  /api/search` | – | 名前 + description への regex match |
+  | `GET  /api/search` | – | `q` / `name` / `tag` / `description` の regex match（AND 結合） |
   | `POST /api/publish` | Bearer | zip アップロード |
   | `GET  /api/audit` | Bearer | audit log 返却 |
 

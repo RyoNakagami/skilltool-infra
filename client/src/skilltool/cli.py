@@ -92,15 +92,23 @@ def show(name: str = typer.Argument(..., help="Package name")) -> None:
         output.error(f"registry error: {e}")
         raise typer.Exit(1)
     meta = info.get("metadata", {})
-    output.kv(
-        [
-            ("name", info.get("name", name)),
-            ("latest", info.get("latest", "-")),
-            ("author", meta.get("author", "-")),
-            ("description", meta.get("description", "-")),
-            ("versions", ", ".join(info.get("versions", []))),
-        ]
-    )
+    tags = meta.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    rows: list[tuple[str, object]] = [
+        ("name", info.get("name", name)),
+        ("latest", info.get("latest", "-")),
+        ("author", meta.get("author", "-")),
+        ("tags", ", ".join(str(t) for t in tags) if tags else "-"),
+        (
+            "published_by",
+            f"{meta.get('published_by', '-')}  "
+            f"({meta.get('published_at', '-')})",
+        ),
+        ("description", meta.get("description", "-")),
+        ("versions", ", ".join(info.get("versions", []))),
+    ]
+    output.kv(rows)
 
 
 @app.command("list")
@@ -119,6 +127,7 @@ def list_cmd(
             "name": meta.name,
             "latest": meta.version,
             "author": meta.author or "",
+            "tags": list(meta.tags),
             "description": meta.description,
         }
         for _, meta in installed
