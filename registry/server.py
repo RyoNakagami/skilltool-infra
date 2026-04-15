@@ -34,6 +34,8 @@ from html import escape
 from pathlib import Path
 from typing import Any, Iterable
 
+DEFAULT_ENTRY = "SKILL.md"
+
 import yaml
 from fastapi import (
     Depends,
@@ -217,25 +219,74 @@ def all_packages() -> list[dict[str, Any]]:
     return out
 
 
-def extract_skill_metadata(zip_bytes: bytes) -> dict[str, Any]:
+def _find_manifest(names: list[str], filename: str) -> str | None:
+    """Return the archive entry for ``filename`` at root or one dir deep.
+
+    Exact basename match; skips any deeper paths so e.g. ``scripts/skill.toml``
+    inside a larger archive won't be picked up as the manifest.
+    """
+    for n in names:
+        depth = n.count("/")
+        if depth > 1:
+            continue
+        base = n.rsplit("/", 1)[-1]
+        if base == filename:
+            return n
+    return None
+
+
+def _validate_identity(meta: dict[str, Any]) -> tuple[str, str]:
+    for required in ("name", "version", "description"):
+        if required not in meta:
+            raise HTTPException(
+                400, f"manifest missing required field '{required}'"
+            )
+    name = str(meta["name"])
+    version = str(meta["version"])
+    if not _NAME_RE.match(name):
+        raise HTTPException(400, f"invalid package name: {name!r}")
+    if not _VERSION_RE.match(version):
+        raise HTTPException(400, f"invalid version: {version!r}")
+    return name, version
+
+
+def _parse_skill_toml(content: str) -> dict[str, Any]:
     try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-    except zipfile.BadZipFile as exc:
-        raise HTTPException(400, f"invalid zip: {exc}")
+        parsed = tomllib.loads(content)
+    except tomllib.TOMLDecodeError as exc:
+        raise HTTPException(400, f"skill.toml: invalid TOML: {exc}")
+    skill = parsed.get("skill")
+    if not isinstance(skill, dict):
+        raise HTTPException(400, "skill.toml: missing [skill] table")
 
-    with zf:
-        skill_md = next(
-            (
-                n
-                for n in zf.namelist()
-                if n.endswith("skill.md") and n.count("/") <= 1
-            ),
-            None,
-        )
-        if skill_md is None:
-            raise HTTPException(400, "skill.md not found at archive root")
-        content = zf.read(skill_md).decode("utf-8", errors="replace")
+    name, version = _validate_identity(skill)
+    include = skill.get("include")
+    if include is not None:
+        if not isinstance(include, list) or not all(
+            isinstance(x, str) for x in include
+        ):
+            raise HTTPException(
+                400, "skill.toml: skill.include must be a list of strings"
+            )
 
+    result: dict[str, Any] = {
+        "name": name,
+        "version": version,
+        "description": str(skill["description"]),
+        "author": str(skill["author"]) if "author" in skill else "",
+        "entry": str(skill.get("entry", DEFAULT_ENTRY)),
+        "manifest_format": "skill.toml",
+    }
+    # Preserve any extra keys the user put under [skill] for future use —
+    # tags, homepage, etc. — but don't let them overwrite the canonical ones.
+    for k, v in skill.items():
+        if k in {"name", "version", "description", "author", "entry"}:
+            continue
+        result.setdefault(k, v)
+    return result
+
+
+def _parse_skill_md_frontmatter(content: str) -> dict[str, Any]:
     match = _FRONTMATTER_RE.match(content)
     if not match:
         raise HTTPException(400, "skill.md is missing YAML frontmatter")
@@ -244,28 +295,50 @@ def extract_skill_metadata(zip_bytes: bytes) -> dict[str, Any]:
     except yaml.YAMLError as exc:
         raise HTTPException(400, f"invalid frontmatter YAML: {exc}")
 
-    for field in ("name", "version", "description"):
-        if field not in meta:
-            raise HTTPException(400, f"frontmatter missing '{field}'")
-
-    name = str(meta["name"])
-    version = str(meta["version"])
-    if not _NAME_RE.match(name):
-        raise HTTPException(400, f"invalid package name: {name!r}")
-    if not _VERSION_RE.match(version):
-        raise HTTPException(400, f"invalid version: {version!r}")
-
-    return {
+    name, version = _validate_identity(meta)
+    result: dict[str, Any] = {
         "name": name,
         "version": version,
         "description": str(meta.get("description", "")),
         "author": str(meta["author"]) if "author" in meta else "",
-        **{
-            k: v
-            for k, v in meta.items()
-            if k not in {"name", "version", "description", "author"}
-        },
+        "manifest_format": "skill.md",
     }
+    for k, v in meta.items():
+        if k in {"name", "version", "description", "author"}:
+            continue
+        result.setdefault(k, v)
+    return result
+
+
+def extract_skill_metadata(zip_bytes: bytes) -> dict[str, Any]:
+    """Parse package metadata from an uploaded zip.
+
+    Prefers ``skill.toml`` (task004) and falls back to the legacy
+    ``skill.md`` YAML frontmatter so existing packages keep working.
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, f"invalid zip: {exc}")
+
+    with zf:
+        names = zf.namelist()
+        skill_toml = _find_manifest(names, "skill.toml")
+        if skill_toml is not None:
+            content = zf.read(skill_toml).decode("utf-8", errors="replace")
+            return _parse_skill_toml(content)
+
+        for candidate in ("skill.md", "SKILL.md"):
+            path = _find_manifest(names, candidate)
+            if path is not None:
+                content = zf.read(path).decode("utf-8", errors="replace")
+                return _parse_skill_md_frontmatter(content)
+
+    raise HTTPException(
+        400,
+        "no manifest found: expected skill.toml (preferred) or "
+        "skill.md at archive root",
+    )
 
 
 # ---------------------------------------------------------------------------
