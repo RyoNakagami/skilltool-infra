@@ -1,0 +1,86 @@
+# ------------------------------------------------
+# Author: Ryo Nakagami
+# Revised: 2025-10-29
+# File: uv tool .gitignore
+# Description:
+#   Minimal .gitignore for uv-based Python/CLI projects.
+#   Ignores:
+#     - Temporary files
+#     - Log files
+#     - Environment configs
+#     - Python caches
+#     - Build artifacts
+#     - IDE/editor metadata
+# ------------------------------------------------
+
+# ---- OS / temporary files ----
+.DS_Store
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+
+# ---- Logs ----
+logs/
+*.log
+*.out
+*.trace
+
+# ---- Python cache ----
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ---- Environment files ----
+.env
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+*.gpg
+
+# ---- python version ----
+.python-version
+
+# ---- Build / packaging ----
+build/
+dist/
+wheels/
+share/python-wheels/
+
+
+# ---- Notebooks (if any) ----
+.ipynb_checkpoints/
+
+# ---- IDE / editor ----
+.vscode/
+.idea/
+*.iml
+
+# ---- Temporary scripts for execution tests ----
+*.test.sh
+
+# ---- Sandbox / temporary directories ----
+tmp/
+sandbox/
+
+# ---- Optional repo-cleaner artifacts ----
+..bfg-report
+bfg_check_list/
+
+# ---- skilltool registry local state (never commit) ----
+# Generic data dir (packages, audit log, users.toml by default)
+registry/data/
+registry/.env
+
+# Explicit safety nets: user tokens and audit log must never leak into
+# Git even if someone overrides SKILLTOOL_USERS_FILE / SKILLTOOL_AUDIT_LOG
+# to live outside registry/data/.
+registry/users.toml
+registry/publish.log
+

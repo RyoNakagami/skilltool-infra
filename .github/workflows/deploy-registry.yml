@@ -1,0 +1,55 @@
+name: Deploy Registry
+
+# Deploys the registry container to Server A over Tailscale SSH.
+# Triggers on pushes to main that touch registry/ sources, or manually.
+#
+# Required repository secrets:
+#   TS_OAUTH_CLIENT_ID     - Tailscale OAuth client id (scope: devices:write tag:ci)
+#   TS_OAUTH_SECRET        - Tailscale OAuth client secret
+#   REGISTRY_HOST          - Tailscale hostname or 100.x.x.x of Server A
+#   REGISTRY_SSH_USER      - SSH user on Server A
+#   REGISTRY_SSH_KEY       - Private SSH key authorised on Server A
+#   REGISTRY_PATH          - Absolute path to the skilltool-infra checkout on Server A
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "registry/**"
+      - ".github/workflows/deploy-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy on Server A via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.REGISTRY_HOST }}
+          username: ${{ secrets.REGISTRY_SSH_USER }}
+          key: ${{ secrets.REGISTRY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.REGISTRY_PATH }}"
+            git fetch --prune origin main
+            git switch main
+            git reset --hard origin/main
+            cd registry
+            docker compose up -d --build
+            docker compose ps

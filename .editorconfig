@@ -1,0 +1,55 @@
+# .editorconfig
+
+# set the root of the project
+root = true
+
+# set default charset, line endings, and whitespace rules
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Python filles
+[*.py]
+indent_style = space
+indent_size = 4
+
+# Jupyter Notebook files
+[*.ipynb]
+insert_final_newline = true
+trim_trailing_whitespace = false
+
+[*.qmd]
+indent_style = space
+indent_size = 2
+
+# csv files
+[*.csv]
+trim_trailing_whitespace = false
+insert_final_newline = true
+end_of_line = lf
+indent_style = none
+
+# json files
+[*.json]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+end_of_line = lf
+trim_trailing_whitespace = false
+
+# yaml files
+[*.yml]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.yaml]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true

@@ -1,0 +1,11 @@
+meta-data:
+  repository_name: skilltool-infra
+  visibility: private
+  org-name: RyoNakagami
+  tag:
+    - uv
+    - skill.md
+  description: |
+    xxxxx
+  homepage: null
+  license: mit

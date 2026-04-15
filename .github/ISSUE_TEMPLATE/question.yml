@@ -1,0 +1,38 @@
+name: ✎ Question
+description: Ask a question about the project
+title: "[QUESTION] "
+labels: [question]
+assignees: []
+
+body:
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency Level
+      description: Select the urgency level of your question.
+      options:
+        - Low
+        - Medium
+        - High
+
+  - type: checkboxes
+    id: related_areas
+    attributes:
+      label: Related Areas
+      description: Select the areas related to your question.
+      options:
+        - label: Documentation
+        - label: Statistics
+        - label: Code
+
+  - type: textarea
+    attributes:
+      label: Question
+      description: A clear and concise question about the project.
+      placeholder: Describe your question
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context or screenshots related to your question here.
+      placeholder: Add additional context here
