@@ -500,6 +500,7 @@ Host skilltool-server
 - [README](../../README.md) — Quick Start と運用レシピ
 - [publishing.md](./publishing.md) — publish 手順と skill.toml の使い方
 - [package-manifest.md](./package-manifest.md) — `skill.toml` 完全仕様
+- [operations.md](./operations.md) — サーバ運用 Tips（推奨スペック / 更新 / ユーザ管理 / 削除 / トラブルシュート）
 - [limitations.md](./limitations.md) — 現状の制限と拡張ポイント
 - [../transport.md](../transport.md) — HTTP / SSH 切り替え
 - [repository-architecture.md](./repository-architecture.md) — ツリー

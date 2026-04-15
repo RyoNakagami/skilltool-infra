@@ -20,6 +20,8 @@ via `uv tool`.
   — publish の手順と skill.toml の使い方
 - [docs/implementations/package-manifest.md](docs/implementations/package-manifest.md)
   — `skill.toml` の完全仕様
+- [docs/implementations/operations.md](docs/implementations/operations.md)
+  — サーバ運用 Tips（推奨スペック / 更新 / ユーザ管理 / パッケージ削除 / トラブルシュート）
 - [docs/implementations/limitations.md](docs/implementations/limitations.md)
   — 現状の制限と将来の拡張ポイント
 - [docs/transport.md](docs/transport.md) — HTTP / SSH トランスポート切り替え
