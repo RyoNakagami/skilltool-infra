@@ -48,8 +48,20 @@ token="tok_${username}_${secret}"
 # [users.<name>] block would make users.toml fail to parse (TOML forbids
 # duplicate table headers) and the server would refuse all auth.
 python3 - "$users_file" "$username" <<'PY'
-import sys, tomllib
+import sys
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        sys.stderr.write(
+            "[skilltool] TOML parser not available. Use Python 3.11+ or\n"
+            "install the backport: pip install --user tomli\n"
+        )
+        sys.exit(10)
 
 path = Path(sys.argv[1])
 username = sys.argv[2]
@@ -87,8 +99,21 @@ EOF
 
 # Sanity-check the result before replacing the live file.
 python3 - "${tmp}" <<'PY'
-import sys, tomllib
+import sys
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        sys.stderr.write(
+            "[skilltool] TOML parser not available. Use Python 3.11+ or\n"
+            "install the backport: pip install --user tomli\n"
+        )
+        sys.exit(10)
+
 try:
     tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 except tomllib.TOMLDecodeError as exc:

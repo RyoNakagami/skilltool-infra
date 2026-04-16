@@ -1,6 +1,6 @@
 ---
 author: "Ryo Nakagami"
-date-modified: "2026-04-15"
+date-modified: "2026-04-16"
 project: skill-tool
 ---
 
@@ -412,6 +412,11 @@ sed -i '/docx  1\.2\.0/d' registry/data/publish.log
   # token が (unset) だったら ~/.config/skilltool/config.toml か環境変数に設定
   ```
 
+  Windows クライアントの場合、config パスは
+  `%USERPROFILE%\.config\skilltool\config.toml`
+  （`%APPDATA%` ではない）。`XDG_CONFIG_HOME` を明示設定していればそちら優先。
+  実パスは `skilltool config` の出力で確認できます。
+
 ### 4.4 クライアントが 409 "... already exists"
 
 - **原因**: 同じ `name@version` の再 publish
@@ -450,20 +455,81 @@ sed -i '/docx  1\.2\.0/d' registry/data/publish.log
   id -Gn | tr ' ' '\n' | grep -x docker
   ```
 
-### 4.7 `add-user.sh` が "permission denied: users.toml"
+### 4.7 bind mount の permission denied（`add-user.sh` / 起動直後の restart ループ）
 
-- **原因**: bind mount 先がコンテナ内で root 書き込みされて root 所有に
-  なっている。`.env` に `PUID` / `PGID` を書く前に `up -d` した典型
-- **対応**:
+同根の症状が 2 系統あります。
+
+- **症状 A**: `add-user.sh` が `permission denied: users.toml`
+- **症状 B**: `docker compose ps` が `Restarting (1)` を繰り返し、
+  `docker compose logs registry` に以下が出る
+
+  ```text
+  File "/app/server.py", line 64, in <module>
+      PACKAGES_DIR.mkdir(parents=True, exist_ok=True)
+  PermissionError: [Errno 13] Permission denied: '/data/packages'
+  ```
+
+- **原因**: ホスト側 `registry/data/` の所有者がコンテナ内プロセスの
+  `PUID:PGID` と一致していない。典型的には **`./data` ディレクトリを事前
+  作成せずに `docker compose up -d` した結果、Docker daemon が root 所有
+  （`0:0`）で自動作成してしまった**ケース。`.env` に `PUID` / `PGID` を
+  書く前に `up -d` したケースも同根
+- **対応 (sudo あり)**:
 
   ```bash
   cd registry
   docker compose down
   grep -q '^PUID=' .env || echo "PUID=$(id -u)" >> .env
   grep -q '^PGID=' .env || echo "PGID=$(id -g)" >> .env
-  sudo chown -R skilltool:skilltool data
+  # .env の PUID:PGID に合わせて一括 chown（./data が空なら安全）
+  PUID=$(grep ^PUID= .env | cut -d= -f2)
+  PGID=$(grep ^PGID= .env | cut -d= -f2)
+  sudo chown -R "$PUID:$PGID" data
   docker compose up -d --build --force-recreate
   ```
+
+- **対応 (sudo 不可の運用ユーザ、例: `skilltool`)**: 本運用では
+  registry を専用ユーザ (`skilltool`) で回すことを推奨していますが、
+  そのユーザに sudoers を与えていない現場もあります。この場合は以下の
+  いずれかで解消します。
+
+  ```bash
+  # 案 1: ./data が空なら削除して skilltool として作り直す
+  #       registry/ 自体は skilltool 所有なので、中の root 所有 dir も削除可能
+  cd registry
+  docker compose down
+  rmdir ./data          # 空でなければ rm -rf ./data
+  mkdir ./data          # 今度は実行ユーザ (= PUID/PGID) 所有で作られる
+  docker compose up -d
+
+  # 案 2: docker daemon の root 権限経由で chown する
+  cd registry
+  docker compose down
+  PUID=$(grep ^PUID= .env | cut -d= -f2)
+  PGID=$(grep ^PGID= .env | cut -d= -f2)
+  docker run --rm -v "$PWD/data:/data" alpine \
+    chown -R "$PUID:$PGID" /data
+  docker compose up -d
+  ```
+
+  案 2 は `./data` が既に publish 済みデータを抱えている場合（単に所有権
+  がズレただけで中身は生かしたい）に有効です。
+
+- **予防（初回セットアップ時）**: `docker compose up -d` を叩く前に
+  `./data` を `PUID:PGID` 所有で作っておけばこの事故は起きません。
+
+  ```bash
+  cd registry
+  # .env に PUID/PGID を書いた後で:
+  PUID=$(grep ^PUID= .env | cut -d= -f2)
+  PGID=$(grep ^PGID= .env | cut -d= -f2)
+  mkdir -p ./data
+  sudo chown "$PUID:$PGID" ./data
+  docker compose up -d
+  ```
+
+  `setup/server/install.sh` 経由のセットアップなら本手順は既に組み込まれ
+  ていますが、手動で compose を叩く運用ではこの順序に注意。
 
 ### 4.8 `docker compose up --build` したのに変更が反映されない
 
@@ -573,9 +639,50 @@ docker compose logs --tail 100 registry
 | `ModuleNotFoundError: No module named 'fastapi'` | image build の段階で `pip install` が失敗。`docker compose build --no-cache` |
 | `Error: bind: address already in use` | ホスト側で 8765 が使用中。`sudo ss -tlnp \| grep 8765` で犯人特定 |
 | `invalid reference format` (docker-compose) | `.env` の変数が未定義のまま `${VAR}` 参照されている |
-| permission denied on /data | bind mount の UID 不一致。§4.7 参照 |
+| `PermissionError: ... '/data/packages'` で restart ループ | bind mount の UID 不一致。`./data` を事前作成していないと Docker daemon が root 所有で作ってしまうのが典型。§4.7 参照 |
 
-### 4.15 どこから手をつけるか迷った時の診断コマンド集
+### 4.15 `add-user.sh` / `revoke-user.sh` が `ModuleNotFoundError: tomllib`
+
+- **原因**: ホストの `python3` が 3.10 以下。`tomllib` は Python 3.11 で
+  stdlib に入ったモジュールなので、それ以前では import できません
+- **見分け方**:
+
+  ```bash
+  python3 --version            # 3.11 未満なら該当
+  python3 -c 'import tomllib'  # 失敗すれば確定
+  ```
+
+- **対応 (恒久)**: スクリプトは `tomllib` → `tomli` にフォールバック
+  するよう修正済み。PyPI バックポートの `tomli` を入れれば通ります。
+
+  ```bash
+  # PyPI 経由（user install、root 不要）
+  pip install --user tomli
+
+  # Debian/Ubuntu パッケージ経由（root 必要）
+  sudo apt install python3-tomli
+  ```
+
+- **対応 (暫定: Python を切り替えたくない場合)**: コンテナ内の
+  Python 3.12 は `tomllib` を持っているので、そちらで直接 users.toml を
+  編集する手もあります。ただし `add-user.sh` のロジックは bash + python
+  が絡むので、手編集で済ませるほうが早いケースが多いです。`add-user.sh`
+  の中身を参考に `[users.<name>]` ブロックを `registry/data/users.toml`
+  に直接追記し、`token` を `openssl rand -hex 32` で生成してください。
+  追記後に TOML 検証:
+
+  ```bash
+  docker compose exec registry python -c \
+    'import tomllib, pathlib;
+     tomllib.loads(pathlib.Path("/data/users.toml").read_text())
+     and print("ok")'
+  ```
+
+- **長期対策**: 運用 OS に Ubuntu 22.04 (Python 3.10) を使い続ける場合は
+  `tomli` をセットアップ手順に含めておく。24.04 / Python 3.11+ に上げて
+  しまうのが一番素直です
+
+### 4.16 どこから手をつけるか迷った時の診断コマンド集
 
 下記をまとめて貼れば、ほぼ全ての状況を切り分け可能です。
 
