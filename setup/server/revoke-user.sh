@@ -33,8 +33,19 @@ fi
 python3 - "${users_file}" "${username}" <<'PY'
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        sys.stderr.write(
+            "[skilltool] TOML parser not available. Use Python 3.11+ or\n"
+            "install the backport: pip install --user tomli\n"
+        )
+        sys.exit(10)
 
 path = Path(sys.argv[1])
 username = sys.argv[2]

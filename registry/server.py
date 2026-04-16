@@ -592,6 +592,14 @@ a.tag { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; background
 a.tag:hover { background: #cfe5fa; text-decoration: none; }
 .error { color: #a00; background: #fee; padding: 8px 12px; border-radius: 4px; margin: 0.5rem 0; }
 td.ts { font-family: ui-monospace, monospace; font-size: 12px; color: #555; white-space: nowrap; }
+.publish label { display: block; margin-bottom: 1rem; font-weight: 600; }
+.publish input[type=password] { display: block; margin-top: 4px; width: 100%; max-width: 400px; padding: 5px 9px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.publish input[type=file] { display: block; margin-top: 4px; }
+.publish button { padding: 6px 20px; background: #0366d6; color: #fff; border: 0; border-radius: 4px; cursor: pointer; font-size: 14px; }
+.publish button:hover { background: #0258b6; }
+.publish button:disabled { background: #999; cursor: wait; }
+.result .ok { color: #22863a; }
+.result .err { color: #a00; background: #fee; padding: 8px 12px; border-radius: 4px; display: inline-block; }
 """
 
 
@@ -626,6 +634,41 @@ def _search_form(name: str, tag: str, description: str) -> str:
         '<a class="clear" href="/">clear</a>'
         "</form>"
     )
+
+
+_PUBLISH_JS = """\
+document.getElementById("pf").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("btn");
+  const el = document.getElementById("result");
+  btn.disabled = true;
+  btn.textContent = "Publishing\u2026";
+  el.innerHTML = "";
+  const fd = new FormData();
+  fd.append("file", document.getElementById("pkg").files[0]);
+  try {
+    const res = await fetch("/api/publish", {
+      method: "POST",
+      headers: {"Authorization": "Bearer " + document.getElementById("tok").value},
+      body: fd,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      el.innerHTML = '<p class="ok">\u2714 Published: <strong>'
+        + data.name + "@" + data.version + "</strong></p>";
+    } else {
+      el.innerHTML = '<p class="err">\u2718 '
+        + (data.detail || JSON.stringify(data)) + "</p>";
+    }
+  } catch (err) {
+    el.innerHTML = '<p class="err">\u2718 Network error: '
+      + err.message + "</p>";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Publish";
+  }
+});
+"""
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -686,6 +729,7 @@ def home(
 
     body = (
         "<h1><a href=\"/\">skilltool registry</a></h1>"
+        '<p><a href="/publish">Publish a package</a></p>'
         + _search_form(name or "", tag or "", description or "")
         + err_html
         + f'<p class="muted">{status}</p>'
@@ -743,4 +787,25 @@ def package_page(name: str) -> HTMLResponse:
         "</tr></thead>"
         + f"<tbody>{version_rows}</tbody></table>"
     )
-    return HTMLResponse(_layout(f"{name} — skilltool", body))
+    return HTMLResponse(_layout(f"{name} \u2014 skilltool", body))
+
+
+@app.get("/publish", response_class=HTMLResponse)
+def publish_page() -> HTMLResponse:
+    body = (
+        '<p><a href="/">\u2190 all packages</a></p>'
+        "<h1>Publish</h1>"
+        '<form id="pf" class="publish">'
+        "<label>Token"
+        '<input type="password" id="tok" required '
+        'placeholder="tok_\u2026">'
+        "</label>"
+        "<label>Package zip"
+        '<input type="file" id="pkg" accept=".zip" required>'
+        "</label>"
+        '<button type="submit" id="btn">Publish</button>'
+        "</form>"
+        '<div id="result" class="result"></div>'
+        f"<script>{_PUBLISH_JS}</script>"
+    )
+    return HTMLResponse(_layout("Publish \u2014 skilltool", body))

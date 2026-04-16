@@ -1,11 +1,12 @@
 meta-data:
   repository_name: skilltool-infra
-  visibility: private
+  visibility: public
   org-name: RyoNakagami
   tag:
     - uv
-    - skill.md
+    - claude-skill
+    - skill-registry
   description: |
-    xxxxx
+    PyPI-like registry for Claude Agent skill.md packages — Tailscale-native, per-user tokens, HTTP/SSH dual transport
   homepage: null
   license: mit
