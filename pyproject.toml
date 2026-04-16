@@ -1,6 +1,10 @@
-# Top-level pyproject kept lean: only pytest configuration for the
-# ``tests/`` tree. The shippable package lives under ``client/`` and has
-# its own pyproject.
+# Top-level pyproject for the skilltool-infra repository.
+# The shippable client package lives under client/ and has its own pyproject.
+
+[project]
+name = "skilltool-infra"
+version = "0.2.0"
+requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
